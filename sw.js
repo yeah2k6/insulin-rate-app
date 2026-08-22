@@ -1,4 +1,4 @@
-const CACHE_NAME = 'insulin-rate-v1';
+const CACHE_NAME = 'insulin-rate-v2';
 const ASSETS = [
   './index.html',
   './manifest.json',
