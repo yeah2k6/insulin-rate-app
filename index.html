@@ -67,6 +67,19 @@
   .arrow { text-align: center; color: var(--text2); font-size: 14px; user-select: none; }
   .changed-badge { width: 8px; height: 8px; background: var(--changed); border-radius: 50%; display: inline-block; }
 
+  /* ── 总基础率汇总栏 ── */
+  .total-bar { margin: 4px 0 8px; background: var(--surface); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow); }
+  .total-label { font-size: 13px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+  .total-label strong { color: var(--text); font-size: 14px; }
+  .total-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--primary); }
+  .total-value .total-old { color: var(--text2); font-weight: 500; font-size: 15px; }
+  .total-value .total-arrow { color: var(--text2); font-size: 14px; margin: 0 4px; }
+  .total-value .total-diff { font-size: 13px; font-weight: 600; margin-left: 6px; padding: 2px 8px; border-radius: 10px; }
+  .total-diff.up { color: var(--changed); background: var(--changed-bg); }
+  .total-diff.down { color: var(--primary); background: var(--primary-light); }
+  .total-diff.flat { color: var(--green); background: var(--green-bg); }
+  .total-gap-warn { font-size: 11px; color: var(--accent); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+
   .save-bar { padding: 12px 16px; background: var(--surface); border-top: 1px solid var(--border); position: sticky; bottom: 56px; z-index: 50; display: flex; gap: 10px; }
   .btn-primary { flex: 1; background: var(--primary); color: #fff; border: none; border-radius: 10px; padding: 13px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background .15s; letter-spacing: .5px; }
   .btn-primary:active { background: var(--primary-dark); }
@@ -143,6 +156,8 @@
   .detail-table tr:last-child td { border-bottom: none; }
   .detail-table tr.changed-row td { background: var(--changed-bg); }
   .detail-table .changed-val { color: var(--changed); font-weight: 700; }
+  .detail-table tr.total-row td { border-top: 2px solid var(--border); background: var(--primary-light); font-weight: 700; font-size: 13px; }
+  .detail-table tr.total-row .total-num { color: var(--primary); font-size: 15px; }
   .modal-actions { padding: 12px 18px; display: flex; gap: 10px; border-top: 1px solid var(--border); }
 
   /* ── 帮助弹窗 ── */
@@ -199,6 +214,13 @@
       <span>时间段</span><span style="text-align:center">旧值</span><span></span><span style="text-align:center">新值</span>
     </div>
     <div id="rate-rows"></div>
+    <div class="total-bar" id="total-bar" style="display:none">
+      <div>
+        <div class="total-label"><strong>Σ 总基础率</strong><span>(U/天)</span></div>
+        <div class="total-gap-warn" id="total-gap-warn" style="display:none">⚠️ 时段未覆盖完整24小时</div>
+      </div>
+      <div class="total-value" id="total-value"></div>
+    </div>
   </div>
   <div class="save-bar">
     <button class="btn-secondary" onclick="clearAll()">清空</button>
@@ -409,6 +431,16 @@
         </ul>
       </div>
       <div class="help-section">
+        <h3>Σ 总基础率</h3>
+        <p>总基础率 = 各时段基础率 × 时段时长之和，即 24 小时基础胰岛素输注总量（U/天）。</p>
+        <ul>
+          <li>填写数值时<strong>实时联动更新</strong>，直观看到总量变化</li>
+          <li>有调整时显示「旧总量 → 新总量 ±差值」</li>
+          <li>时段未覆盖完整 24 小时会有提示（空隙按 0 输注计入）</li>
+        </ul>
+        <p>示例：1.5h × 0.4 U/h + 1.5h × 0.95 U/h + … = <b>11.8 U/天</b></p>
+      </div>
+      <div class="help-section">
         <h3>⚙️ 设置时间分段</h3>
         <p>在"设置"页可以自定义时间段：</p>
         <ul>
@@ -427,13 +459,13 @@
       </div>
       <div class="help-section">
         <h3>💡 导出格式示例</h3>
-        <div class="example">基础率1（肚子位置）
-记录时间：2026-06-28 22:00
-────────────────────────
+        <div class="example">目前执行基础率1（肚子位置）
+2026-06-28 22:00
 0:00到1:30  0.4
-1:30到3:00  0.9 调整为 0.95
+1:30到3:00  0.9调整为0.95
 3:00到6:00  0.7
-...</div>
+...
+总基础率：11.5调整为11.8 U/天</div>
       </div>
     </div>
   </div>
@@ -497,10 +529,10 @@ function renderRateRows() {
     row.innerHTML = `
       <div class="time-label">${slot[0]}<br><span style="color:var(--text2);font-size:11px">${slot[1]}</span></div>
       <input class="rate-input" id="old-${i}" type="text" inputmode="decimal" step="0.025" placeholder="旧值"
-        oninput="checkChanged(${i})" onblur="formatRateInput(this)">
+        oninput="checkChanged(${i})" onblur="formatRateInput(this);updateTotalBar()">
       <div class="arrow">→</div>
       <input class="rate-input" id="new-${i}" type="text" inputmode="decimal" step="0.025" placeholder="新值"
-        oninput="checkChanged(${i})" onblur="formatRateInput(this)">
+        oninput="checkChanged(${i})" onblur="formatRateInput(this);updateTotalBar()">
     `;
     container.appendChild(row);
   });
@@ -536,6 +568,100 @@ function stripTrailingZeros(n) {
   return s;
 }
 
+// ─────────────────────────────────────────────
+// 总基础率计算
+// 定义：Σ(各时段基础率 × 时段时长)，单位 U/天
+// ─────────────────────────────────────────────
+// 时间字符串 → 分钟数（如 "1:30" → 90，"24:00" → 1440）
+function timeToMinutes(t) {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// 时段时长（小时）。时段起止都按 0-24 小时制，若结束 < 开始视为跨零点
+function slotHours(start, end) {
+  let s = timeToMinutes(start), e = timeToMinutes(end);
+  if (e < s) e += 24 * 60; // 跨零点，如 22:00 → 2:00
+  return (e - s) / 60;
+}
+
+// 计算总基础率。rates: [{start, end, oldValue, newValue}]
+// preferNew=true 时取 newValue（无则取 oldValue）；false 时取 oldValue（无则取 newValue）
+function calcTotalBasal(rates, preferNew) {
+  let total = 0;
+  for (const r of rates) {
+    let v = preferNew
+      ? (r.newValue !== null && r.newValue !== undefined ? r.newValue : r.oldValue)
+      : (r.oldValue !== null && r.oldValue !== undefined ? r.oldValue : r.newValue);
+    if (v === null || v === undefined || isNaN(v)) continue;
+    total += v * slotHours(r.start, r.end);
+  }
+  return total;
+}
+
+// 检查时段是否覆盖完整24小时（空隙按0输注，仅提示）
+function slotsCoverFullDay(rates) {
+  if (!rates.length) return false;
+  // 合并区间判断覆盖
+  const ranges = rates
+    .map(r => [timeToMinutes(r.start), timeToMinutes(r.end)])
+    .sort((a, b) => a[0] - b[0]);
+  let coveredEnd = 0;
+  for (const [s, e] of ranges) {
+    let end = e < s ? e + 1440 : e; // 跨零点
+    if (s > coveredEnd) return false; // 有空隙
+    coveredEnd = Math.max(coveredEnd, end);
+  }
+  return coveredEnd >= 1440;
+}
+
+// 记录页实时更新总基础率汇总栏
+function updateTotalBar() {
+  const bar = document.getElementById('total-bar');
+  const valueEl = document.getElementById('total-value');
+  const warnEl = document.getElementById('total-gap-warn');
+
+  // 收集当前输入（只收集有值的时段）
+  const rates = [];
+  slots.forEach((slot, i) => {
+    const oldRaw = document.getElementById(`old-${i}`).value.trim();
+    const newRaw = document.getElementById(`new-${i}`).value.trim();
+    const oldVal = parseRateVal(oldRaw);
+    const newVal = parseRateVal(newRaw);
+    if (oldRaw || newRaw) {
+      rates.push({
+        start: slot[0], end: slot[1],
+        oldValue: isNaN(oldVal) ? null : oldVal,
+        newValue: isNaN(newVal) ? null : newVal
+      });
+    }
+  });
+
+  if (!rates.length) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  warnEl.style.display = slotsCoverFullDay(rates) ? 'none' : 'flex';
+
+  const oldTotal = calcTotalBasal(rates, false);
+  const newTotal = calcTotalBasal(rates, true);
+  const hasNew = rates.some(r => r.newValue !== null);
+  const diff = newTotal - oldTotal;
+
+  let html = '';
+  if (hasNew && Math.abs(diff) > 1e-9) {
+    // 新旧都有且总量有变化：显示 对比 + 差值
+    const diffStr = stripTrailingZeros(Math.abs(diff));
+    const cls = diff > 0 ? 'up' : 'down';
+    const sign = diff > 0 ? '+' : '−';
+    html = `<span class="total-old">${stripTrailingZeros(oldTotal)}</span><span class="total-arrow">→</span>${stripTrailingZeros(newTotal)}<span class="total-diff ${cls}">${sign}${diffStr}</span>`;
+  } else {
+    html = stripTrailingZeros(hasNew ? newTotal : oldTotal);
+  }
+  valueEl.innerHTML = html;
+}
+
 function checkChanged(i) {
   const oldInput = document.getElementById(`old-${i}`);
   const newInput = document.getElementById(`new-${i}`);
@@ -546,6 +672,7 @@ function checkChanged(i) {
   } else {
     newInput.classList.remove('changed');
   }
+  updateTotalBar();
 }
 
 // ─────────────────────────────────────────────
@@ -570,7 +697,11 @@ function saveRecord() {
   });
   if (!rates.length) { showToast('请至少填写一个时间段'); return; }
 
-  DB.addRecord({ planName, pumpPos, rates, ts: Date.now() });
+  // 计算并存储总基础率
+  const totalOld = calcTotalBasal(rates, false);
+  const totalNew = calcTotalBasal(rates, true);
+
+  DB.addRecord({ planName, pumpPos, rates, ts: Date.now(), totalOld, totalNew });
   showToast('✅ 已保存');
   clearAll();
   // 自动回填最新记录的值作为下次的旧值
@@ -585,6 +716,7 @@ function clearAll() {
     ni.value = '';
     ni.classList.remove('changed');
   });
+  updateTotalBar();
 }
 
 // ─────────────────────────────────────────────
@@ -624,6 +756,15 @@ function renderHistory() {
   listEl.innerHTML = '';
   records.forEach(record => {
     const changedCount = record.rates.filter(r => r.oldValue !== null && r.newValue !== null && r.oldValue !== r.newValue).length;
+    // 总基础率（兼容旧记录：无缓存时实时计算）
+    const totalOld = (record.totalOld !== undefined) ? record.totalOld : calcTotalBasal(record.rates, false);
+    const totalNew = (record.totalNew !== undefined) ? record.totalNew : calcTotalBasal(record.rates, true);
+    const totalDiff = totalNew - totalOld;
+    const hasChange = Math.abs(totalDiff) > 1e-9;
+    const diffStr = stripTrailingZeros(Math.abs(totalDiff));
+    const totalHtml = hasChange
+      ? `总基础率 <span>${stripTrailingZeros(totalOld)} → ${stripTrailingZeros(totalNew)} U (${totalDiff > 0 ? '+' : '−'}${diffStr})</span>`
+      : `总基础率 ${stripTrailingZeros(totalNew)} U/天`;
     const card = document.createElement('div');
     card.className = 'history-card';
     card.innerHTML = `
@@ -635,7 +776,7 @@ function renderHistory() {
         <span class="card-time">${formatDate(record.ts)}</span>
       </div>
       <div class="card-body">
-        <div class="card-summary">共 ${record.rates.length} 段 · ${changedCount > 0 ? `<span>${changedCount} 段有调整</span>` : '无调整'}</div>
+        <div class="card-summary">${totalHtml}<br>共 ${record.rates.length} 段 · ${changedCount > 0 ? `<span>${changedCount} 段有调整</span>` : '无调整'}</div>
       </div>
       <div class="card-actions">
         <button class="card-btn" onclick="showDetail('${record.id}')">📄 查看详情</button>
@@ -669,7 +810,13 @@ function deleteRecord(id) {
 function showDetail(id) {
   const record = DB.getRecords().find(r => r.id === id);
   if (!record) return;
-  const changedRows = record.rates.filter(r => r.oldValue !== null && r.newValue !== null && r.oldValue !== r.newValue);
+
+  // 总基础率（兼容旧记录）
+  const totalOld = (record.totalOld !== undefined) ? record.totalOld : calcTotalBasal(record.rates, false);
+  const totalNew = (record.totalNew !== undefined) ? record.totalNew : calcTotalBasal(record.rates, true);
+  const totalDiff = totalNew - totalOld;
+  const totalChanged = Math.abs(totalDiff) > 1e-9;
+  const totalDiffStr = totalChanged ? (totalDiff > 0 ? `+${stripTrailingZeros(totalDiff)}` : `−${stripTrailingZeros(-totalDiff)}`) : '—';
 
   const bodyEl = document.getElementById('detail-modal-body');
   bodyEl.innerHTML = `
@@ -692,6 +839,12 @@ function showDetail(id) {
             <td class="${changed ? 'changed-val' : ''}">${diffStr}</td>
           </tr>`;
         }).join('')}
+        <tr class="total-row">
+          <td>Σ 总基础率 (U/天)</td>
+          <td>${stripTrailingZeros(totalOld)}</td>
+          <td class="total-num">${stripTrailingZeros(totalNew)}</td>
+          <td class="total-num ${totalChanged ? 'changed-val' : ''}">${totalDiffStr}</td>
+        </tr>
       </tbody>
     </table>
   `;
@@ -739,6 +892,14 @@ function generateText(record) {
       text += `${r.start}到${r.end}  ${r.oldValue !== null ? oldStr : newStr}\n`;
     }
   });
+  // 总基础率（兼容旧记录）
+  const totalOld = (record.totalOld !== undefined) ? record.totalOld : calcTotalBasal(record.rates, false);
+  const totalNew = (record.totalNew !== undefined) ? record.totalNew : calcTotalBasal(record.rates, true);
+  if (Math.abs(totalNew - totalOld) > 1e-9) {
+    text += `总基础率：${stripTrailingZeros(totalOld)}调整为${stripTrailingZeros(totalNew)} U/天\n`;
+  } else {
+    text += `总基础率：${stripTrailingZeros(totalNew)} U/天\n`;
+  }
   return text;
 }
 
@@ -857,7 +1018,10 @@ function parseImportText(raw) {
       rates.push({ start, end, oldValue, newValue });
     }
     if (rates.length > 0) {
-      records.push({ planName, pumpPos, rates, ts });
+      // 重算总基础率并存入（文本中的"总基础率"行不匹配时段格式会被自动跳过）
+      const totalOld = calcTotalBasal(rates, false);
+      const totalNew = calcTotalBasal(rates, true);
+      records.push({ planName, pumpPos, rates, ts, totalOld, totalNew });
     }
   }
   return records;
@@ -1159,6 +1323,8 @@ function autoFillOldValues() {
       }
     }
   });
+  // 更新总基础率汇总栏
+  updateTotalBar();
 }
 autoFillOldValues();
 
